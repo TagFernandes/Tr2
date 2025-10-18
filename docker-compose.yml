@@ -1,0 +1,58 @@
+services:
+  # Serviço do Banco de Dados (PostgreSQL + TimescaleDB)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16  # Usa a imagem oficial com PostgreSQL 16
+    container_name: timescaledb
+    restart: always
+    environment:
+      - POSTGRES_USER=admin          # Usuário do banco
+      - POSTGRES_PASSWORD=1234  # <- Senha do banco
+      - POSTGRES_DB=tr2_banco        # Nome do banco de dados a ser criado
+    ports:
+      # Mapeia a porta 5432 do container para a porta 5432 da sua máquina
+      # Isso permite que seu script Python (fora do Docker) se conecte
+      - "5433:5432"
+    volumes:
+      # Persiste os dados do banco de dados na sua máquina local
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./init-grafana-user.sql:/docker-entrypoint-initdb.d/01-init-grafana-user.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d tr2_banco"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - 3101:3100
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yaml
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/promtail-config.yaml
+
+  # Serviço do Grafana
+  grafana:
+    image: grafana/grafana-oss:latest  # Usa a imagem oficial do Grafana
+    container_name: grafanaTr2
+    restart: always
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 da sua máquina
+      # Isso permite que você acesse a interface web do Grafana
+      - "3001:3000"
+    volumes:
+      # Persiste as configurações, dashboards e plugins do Grafana
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      # Garante que o banco de dados inicie antes do Grafana
+      timescaledb:
+        condition: service_healthy
+
+
+# Define os "volumes" nomeados para persistir os dados
+volumes:
+  timescaledb_data:
+  grafana_data:
+  loki_data:
