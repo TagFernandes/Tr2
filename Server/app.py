@@ -58,6 +58,7 @@ def setup_database(conn):
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS sensor_data (
             time        TIMESTAMPTZ       NOT NULL,
+            sensor_id   TEXT              NOT NULL,
             temperature DOUBLE PRECISION  NULL,
             humidity    DOUBLE PRECISION  NULL,
             dust        DOUBLE PRECISION  NULL
@@ -113,29 +114,31 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 data = json.loads(post_data_bytes.decode('utf-8'))
                 
                 # 2. Obter dados do JSON
+                sensor_id = data.get('sensor')
                 temp = data.get('temperature')
                 hum = data.get('humidity')
                 dust = data.get('dust')
                 
-                if temp is None or hum is None or dust is None:
-                    logger.warning(f"JSON mal formatado recebido: {data}")
-                    self.send_error(400, "JSON invalido. Faltando chaves: 'temperature', 'humidity', 'dust'")
+                
+                if temp is None or hum is None or dust is None or sensor_id is None:
+                    error_msg = "JSON invalido. Faltando chaves: 'sensor', 'temperature', 'humidity', 'dust'"
+                    logger.warning(f"JSON mal formatado recebido: {data}. Erro: {error_msg}")
+                    self.send_error(400, error_msg)
                     return
                 
                 # 3. Preparar e inserir no banco
                 now = datetime.now(timezone.utc)
                 
                 sql = """
-                INSERT INTO sensor_data (time, temperature, humidity, dust)
-                VALUES (%s, %s, %s, %s);
+                INSERT INTO sensor_data (time, sensor_id, temperature, humidity, dust)
+                VALUES (%s, %s, %s, %s, %s);
                 """
                 
                 with db_connection.cursor() as cursor:
-                    cursor.execute(sql, (now, temp, hum, dust))
+                    cursor.execute(sql, (now, sensor_id, temp, hum, dust))
                     db_connection.commit() 
 
-
-                logger.info(f"Dados inseridos: Temp={temp}, Hum={hum}, Dust={dust}")
+                logger.info(f"Dados inseridos do sensor '{sensor_id}': Temp={temp}, Hum={hum}, Dust={dust}")
                 
                 # 4. Responder ao cliente
                 self.send_response(200, "OK")
