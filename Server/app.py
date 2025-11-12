@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 #Log
 handler = LokiLoggerHandler(
-    url="http://localhost:3100/loki/api/v1/push",
+    url="http://localhost:3101/loki/api/v1/push",
     labels={"application": "ServerTr2", "environment": "production"},
 )
 logger = logging.getLogger("ServidorTr2")
