@@ -27,6 +27,9 @@ DB_PORT = "5433"
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 8000
 
+# -- Salvar ultima leitura de cada sensor
+last_readings = {}
+TEMPO_MAX_ULTIMA_LEITURA = 1800  # 30 min
 # --- Funções do Banco de Dados ---
 
 def connect_db():
@@ -101,6 +104,35 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(b"Servidor de sensores no ar. Use POST em /sensor.")
+        elif self.path == '/status':
+            # Rota solicitada: retorna json {"value": 1}
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            sensor_status = {}
+            now_utc = datetime.now(timezone.utc)
+            
+            for sensor, last_time_str in last_readings.items():
+                try:
+                    # Converte string ISO de volta para datetime (com timezone)
+                    last_time = datetime.fromisoformat(last_time_str)
+                    
+                    # Calcula a diferença em segundos
+                    delta = (now_utc - last_time).total_seconds()
+                    
+                    if delta > TEMPO_MAX_ULTIMA_LEITURA:
+                        # Passou do tempo limite (sensor offline/mudo)
+                        sensor_status[sensor] = 0
+                    else:
+                        # Dentro do tempo limite (sensor online)
+                        sensor_status[sensor] = 1
+                        
+                except Exception as e:
+                    logger.error(f"Erro ao calcular status do sensor {sensor}: {e}")
+                    sensor_status[sensor] = 0
+
+            self.wfile.write(json.dumps(sensor_status).encode('utf-8'))
         else:
             self.send_error(404, "Nao encontrado")
 
@@ -117,7 +149,7 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 sensor_id = data.get('sensor')
                 temp = data.get('temperature')
                 hum = data.get('humidity')
-                dust = data.get('dust')
+                dust = data.get('dust', -1)
                 
                 
                 if temp is None or hum is None or dust is None or sensor_id is None:
@@ -129,6 +161,9 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 # 3. Preparar e inserir no banco
                 now = datetime.now(timezone.utc)
                 
+                # Salva o horário atual para este sensor no dicionário global
+                last_readings[sensor_id] = now.isoformat()
+
                 sql = """
                 INSERT INTO sensor_data (time, sensor_id, temperature, humidity, dust)
                 VALUES (%s, %s, %s, %s, %s);
