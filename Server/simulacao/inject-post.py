@@ -19,12 +19,14 @@ def gerar_dados_sensor():
     temp = round(18.0 + random.random() * 10.0, 2) # Temp entre 18.0 e 28.0
     hum = round(50.0 + random.random() * 25.0, 2)  # Humidade entre 50.0 e 75.0
     dust = round(10.0 + random.random() * 15.0, 2) # Poeira entre 10.0 e 25.0
+    latency = round(1000.0 + random.random() * 1500.0, 2)
     
     data = {
         "sensor": "sensor_simulado",
         "temperature": temp,
         "humidity": hum,
-        "dust": dust
+        "dust": dust,
+        "latencia": latency
     }
     return data
 

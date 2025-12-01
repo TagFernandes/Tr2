@@ -53,12 +53,12 @@ def connect_db():
 
 def setup_database(conn):
     """
-    Cria a tabela de dados (sensor_data) e a converte em 
-    uma Hypertable do TimescaleDB.
+    Cria as tabelas (sensor_data e sensor_latency) e as converte em 
+    Hypertables do TimescaleDB.
     """
     with conn.cursor() as cursor:
-        # Tabela para os dados de temperatura, umidade e poeira
-        create_table_sql = """
+        # 1. Tabela para os dados de temperatura, umidade e poeira
+        create_sensor_data_sql = """
         CREATE TABLE IF NOT EXISTS sensor_data (
             time        TIMESTAMPTZ       NOT NULL,
             sensor_id   TEXT              NOT NULL,
@@ -67,24 +67,50 @@ def setup_database(conn):
             dust        DOUBLE PRECISION  NULL
         );
         """
-        cursor.execute(create_table_sql)
+        cursor.execute(create_sensor_data_sql)
         
-        create_hypertable_sql = """
+        # 2. Nova Tabela para latência
+        create_latency_table_sql = """
+        CREATE TABLE IF NOT EXISTS sensor_latency (
+            time        TIMESTAMPTZ       NOT NULL,
+            sensor_id   TEXT              NOT NULL,
+            latency     DOUBLE PRECISION  NOT NULL
+        );
+        """
+        cursor.execute(create_latency_table_sql)
+
+        # 3. Converter sensor_data em Hypertable
+        create_hypertable_data = """
         SELECT create_hypertable(
             'sensor_data', 'time', 
             if_not_exists => TRUE
         );
         """
         try:
-            cursor.execute(create_hypertable_sql)
+            cursor.execute(create_hypertable_data)
         except psycopg2.Error as e:
             if "already exists" in str(e) or "table is not empty" in str(e):
-                conn.rollback() # Cancela a transação de erro
+                conn.rollback()
+            else:
+                raise e 
+        
+        # 4. Converter sensor_latency em Hypertable
+        create_hypertable_latency = """
+        SELECT create_hypertable(
+            'sensor_latency', 'time', 
+            if_not_exists => TRUE
+        );
+        """
+        try:
+            cursor.execute(create_hypertable_latency)
+        except psycopg2.Error as e:
+            if "already exists" in str(e) or "table is not empty" in str(e):
+                conn.rollback()
             else:
                 raise e 
 
         conn.commit()
-        logger.info("Banco de dados configurado com sucesso.")
+        logger.info("Banco de dados e hypertables configurados com sucesso.")
 
 # --- Servidor HTTP ---
 
@@ -149,7 +175,8 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 sensor_id = data.get('sensor')
                 temp = data.get('temperature')
                 hum = data.get('humidity')
-                dust = data.get('dust', -1)
+                dust = data.get('dust', None)
+                latency = data.get('latencia', None) # Default -1 indica que não veio
                 
                 
                 if temp is None or hum is None or dust is None or sensor_id is None:
@@ -164,16 +191,29 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 # Salva o horário atual para este sensor no dicionário global
                 last_readings[sensor_id] = now.isoformat()
 
-                sql = """
+                sql_data = """
                 INSERT INTO sensor_data (time, sensor_id, temperature, humidity, dust)
                 VALUES (%s, %s, %s, %s, %s);
                 """
+
+                # SQL para latencia
+                sql_latency = """
+                INSERT INTO sensor_latency (time, sensor_id, latency)
+                VALUES (%s, %s, %s);
+                """
                 
                 with db_connection.cursor() as cursor:
-                    cursor.execute(sql, (now, sensor_id, temp, hum, dust))
+                    # Insere dados do sensor
+                    cursor.execute(sql_data, (now, sensor_id, temp, hum, dust))
+                    
+                    # Insere latencia se for válida (diferente de -1 ou None)
+                    # Assumindo que 0 é um valor válido de latência
+                    if latency is not None and latency != -1:
+                        cursor.execute(sql_latency, (now, sensor_id, latency))
+                        
                     db_connection.commit() 
 
-                logger.info(f"Dados inseridos do sensor '{sensor_id}': Temp={temp}, Hum={hum}, Dust={dust}")
+                logger.info(f"Dados inseridos do sensor '{sensor_id}': Temp={temp}, Latencia={latency}")
                 
                 # 4. Responder ao cliente
                 self.send_response(200, "OK")
