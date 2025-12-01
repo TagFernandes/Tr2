@@ -175,8 +175,8 @@ class SensorRequestHandler(http.server.BaseHTTPRequestHandler):
                 sensor_id = data.get('sensor')
                 temp = data.get('temperature')
                 hum = data.get('humidity')
-                dust = data.get('dust', None)
-                latency = data.get('latencia', None) # Default -1 indica que não veio
+                dust = data.get('dust', -1) # Default -1 indica que não veio
+                latency = data.get('latencia', None) # Default None indica que não veio
                 
                 
                 if temp is None or hum is None or dust is None or sensor_id is None:
