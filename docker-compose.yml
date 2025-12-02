@@ -36,6 +36,10 @@ services:
   # Serviço do Grafana
   grafana:
     image: grafana/grafana-oss:latest  # Usa a imagem oficial do Grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     container_name: grafanaTr2
     restart: always
     ports:
